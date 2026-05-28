@@ -1,3 +1,0 @@
-export type UUID = string;
-
-

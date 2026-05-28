@@ -1,10 +1,9 @@
 # AI 音乐生成平台（MVP 骨架）
 
-本仓库是一个类 Suno/Udio 的 AI 音乐生成 SaaS 平台 **可运行骨架**（前端 + 后端 + Redis + Postgres）。
+本仓库是一个类 Suno/Udio 的 AI 音乐生成 SaaS 平台 **可运行骨架**（后端 + Redis + Postgres）。
 
 ## 目录结构
 
-- `frontend/`: React 18 + TypeScript + Vite + Tailwind
 - `backend/`: FastAPI + SQLModel + Postgres + Redis + Celery + SSE
 
 ## 本地启动（推荐：Docker 跑依赖，前后端本机跑）
@@ -40,16 +39,17 @@ celery -A app.worker.celery_app worker -l info --pool=solo
 
 **注意**: 使用 `--pool=solo` 避免 ML 模型在 fork 进程时内存溢出。solo 池在单进程中运行（不 fork），更适合加载大型 ML 模型。
 
-### 4) 启动前端
+### 4) 启动 Celery worker（用于生成任务）
+
+在另一个终端：
 
 ```bash
-cd frontend
-npm i
-cp env.example .env
-npm run dev
+cd backend
+source .venv/bin/activate
+celery -A app.worker.celery_app worker -l info --pool=solo
 ```
 
-前端地址：`http://localhost:5173`
+**注意**: 使用 `--pool=solo` 避免 ML 模型在 fork 进程时内存溢出。solo 池在单进程中运行（不 fork），更适合加载大型 ML 模型。
 
 ## Docker 一键启动（可选）
 

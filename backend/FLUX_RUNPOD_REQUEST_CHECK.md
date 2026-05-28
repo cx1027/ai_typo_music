@@ -2,19 +2,14 @@
 
 ## 📋 检查目标
 
-验证在 `http://localhost:5173/generate` 页面点击 "Generate AI Song" 后，是否有请求发送到 `FLUX_RUNPOD_ENDPOINT_ID=vgsdku5vpadklr`。
+验证在发送 `POST /api/generate` 请求后，是否有请求发送到 `FLUX_RUNPOD_ENDPOINT_ID=vgsdku5vpadklr`。
 
-## 🔍 请求流程分析
+## 请求流程分析
 
-### 1. 前端流程
+### 1. 请求发起
 
 ```
-用户点击 "Generate AI Song" 按钮
-  ↓
-frontend/src/pages/Generate.tsx:101 (start 函数)
-  ↓
 POST /api/generate (包含 prompt, lyrics, duration 等参数)
-```
 
 ### 2. 后端流程
 
@@ -213,5 +208,5 @@ logger.info(f"[image_gen_service] RunPod endpoint ID: {endpoint_id}")
    ```
 
 4. **检查任务进度**
-   - 在前端查看任务进度，确认封面图片生成阶段是否执行
+   - 查看后端日志，确认封面图片生成阶段是否执行
    - 查看是否有封面图片生成错误信息
