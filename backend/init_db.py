@@ -13,13 +13,16 @@ from pathlib import Path
 backend_dir = Path(__file__).parent
 sys.path.insert(0, str(backend_dir))
 
+from dotenv import load_dotenv
+load_dotenv(backend_dir / ".env")
+
 from sqlmodel import SQLModel, create_engine
 from loguru import logger
 
 
 def create_tables():
     """Create all tables defined in models."""
-    from app.core import models  # noqa: F401 - imports all models to register them
+    from app import models  # noqa: F401 - imports all models to register them
 
     database_url = os.getenv("DATABASE_URL")
     if not database_url:
