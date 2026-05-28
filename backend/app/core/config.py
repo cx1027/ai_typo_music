@@ -3,7 +3,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import List
 
-from pydantic import Field, field_validator
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -32,50 +32,18 @@ class Settings(BaseSettings):
     s3_region: str = "auto"
     s3_bucket: str = ""
 
-    # Music generation backend selection
-    # - celery: POST /api/generate (SSE) -> Celery worker (or BackgroundTasks if FLUXSCHNELL=RUNPOD)
-    # - runpod: POST /api/music/generate + polling -> RunPod Serverless
-    # - replicate: POST /api/music/generate + polling -> ACE-Step on Replicate (BackgroundTasks, no RunPod)
-    music_generation_backend: str = "celery"  # celery | runpod | replicate
+    # Music generation: ACE-Step via Replicate API (https://replicate.com/fishaudio/ace-step-1.5)
+    replicate_api_token: str = ""
 
-    # RunPod Serverless (https://api.runpod.ai/)
-    runpod_api_key: str = ""
-    runpod_endpoint_id: str = ""
-    runpod_api_base_url: str = "https://api.runpod.ai/v2"
-    runpod_request_timeout_seconds: int = 30
+    # Image generation: FLUX.1 Schnell via Hugging Face Inference API
+    huggingface_token: str = Field(default="", description="HuggingFace token for FLUX.1-schnell - set via HUGGINGFACE_HUB_TOKEN env var")
 
     # WeChat Official Account / JS-SDK
     wechat_app_id: str = ""
     wechat_app_secret: str = ""
 
-    # ACE-Step 1.5 (local inference)
-    ace_step_model_dir: str = "models/ace-step-1.5"
-    ace_step_device: str = "mps"  # mps (Mac), cuda, cpu
-
-    # ACE-Step via Replicate API (https://replicate.com/fishaudio/ace-step-1.5)
-    replicate_api_token: str = ""
-
-    # FLUX.1 Schnell image generation
-    flux_schnell_provider: str = Field(
-        default="runpod",
-        validation_alias="FLUXSCHNELL",
-        description="huggingface | runpod - set via FLUXSCHNELL env var"
-    )
-    flux_model_dir: str = "models/flux_schnell"  # Path to local Flux Schnell checkpoints
-    flux_device: str = "mps"  # mps (Mac), cuda, cpu
-    huggingface_token: str = ""  # Hugging Face token for accessing gated models (FLUX.1-schnell) - set via HUGGINGFACE_TOKEN env var
-    flux_runpod_endpoint_id: str = ""  # RunPod endpoint ID for FLUX.1 Schnell (e.g., vgsdku5vpadklr) - set via FLUX_RUNPOD_ENDPOINT_ID env var
-
     # Vercel deployment URL for the Next.js share app
     share_app_url: str = ""
-
-    @field_validator("flux_schnell_provider", mode="before")
-    @classmethod
-    def normalize_flux_provider(cls, v: str) -> str:
-        """Normalize FLUXSCHNELL env var value to lowercase."""
-        if isinstance(v, str):
-            return v.lower()
-        return v
 
     def cors_origins_list(self) -> List[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
@@ -84,5 +52,3 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-
-

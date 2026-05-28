@@ -215,7 +215,6 @@ def revalidate_share(
 
     # --- Vercel On-Demand ISR revalidation ---
     # Replace with your actual Vercel deployment or a self-hosted Next.js revalidation endpoint
-    vercel_token = settings.flux_runpod_endpoint_id  # reuse existing env var slot; set NEXT_PUBLIC_SITE_URL in .env
     site_url = settings.cors_origins_list()[0] if settings.cors_origins_list() else "http://localhost:3000"
 
     # Purge Vercel CDN cache for this specific path

@@ -6,6 +6,21 @@
 
 - `backend/`: FastAPI + SQLModel + Postgres + Redis + Celery + SSE
 
+## AI Provider Configuration
+
+This backend uses two external AI APIs:
+
+| Feature | Provider | API Key Env Var |
+|---|---|---|
+| Music generation | **Replicate** (ACE-Step 1.5) | `REPLICATE_API_TOKEN` |
+| Cover image generation | **HuggingFace** (FLUX.1 Schnell) | `HUGGINGFACE_HUB_TOKEN` |
+| LLM query expansion (simple mode) | **Anthropic Claude** | `ANTHROPIC_API_KEY` |
+
+Get tokens from:
+- Replicate: https://replicate.com/account/api-tokens
+- HuggingFace: https://huggingface.co/settings/tokens (also accept FLUX.1-schnell license at https://huggingface.co/black-forest-labs/FLUX.1-schnell)
+- Anthropic: https://console.anthropic.com/settings/keys
+
 ## 本地启动（推荐：Docker 跑依赖，前后端本机跑）
 
 ### 1) 启动 Postgres / Redis
@@ -22,24 +37,13 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 cp env.example .env
+# Fill in your API keys in .env
 uvicorn app.main:app --reload --port 8000
 ```
 
 后端地址：`http://localhost:8000`
 
 ### 3) 启动 Celery worker（用于生成任务）
-
-在另一个终端：
-
-```bash
-cd backend
-source .venv/bin/activate
-celery -A app.worker.celery_app worker -l info --pool=solo
-```
-
-**注意**: 使用 `--pool=solo` 避免 ML 模型在 fork 进程时内存溢出。solo 池在单进程中运行（不 fork），更适合加载大型 ML 模型。
-
-### 4) 启动 Celery worker（用于生成任务）
 
 在另一个终端：
 
@@ -81,7 +85,4 @@ docker compose up -d --build
 
 ## 下一步
 
-- 接入真实推理（ACE-Step/RunPod），替换 `music_gen_service.py` 的模拟生成
 - 增加下载 WAV、封面、公开广场、分享、Stripe 订阅等模块
-
-

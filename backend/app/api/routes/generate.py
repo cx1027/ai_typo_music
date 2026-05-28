@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import time
 from typing import Any, AsyncGenerator, Dict, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
 from sse_starlette.sse import EventSourceResponse
 from sqlmodel import Session
 
@@ -34,7 +33,6 @@ class GenerateRequestPayload(Dict[str, Any]):
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 def create_generation(
-    background_tasks: BackgroundTasks,
     payload: Dict[str, Any] = Body(...),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -45,7 +43,6 @@ def create_generation(
         if not title:
             title = None
 
-    # Mode selection: "simple" or "custom" - required
     mode_raw = payload.get("mode")
     if mode_raw is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="mode is required (must be 'simple' or 'custom')")
@@ -55,7 +52,6 @@ def create_generation(
     if not mode or mode not in ("simple", "custom"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="mode must be 'simple' or 'custom'")
 
-    # Validate mode-specific required fields
     if mode == "simple":
         sample_query = (payload.get("sample_query") or "").strip()
         if not sample_query:
@@ -63,10 +59,9 @@ def create_generation(
         prompt = None
         caption = None
         lyrics = None
-    else:  # custom mode
+    else:
         caption = (payload.get("caption") or "").strip()
         if not caption:
-            # Back-compat for older clients
             caption = (payload.get("prompt") or "").strip()
         if not caption:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="caption is required for custom mode")
@@ -74,14 +69,13 @@ def create_generation(
         lyrics = str(lyrics_raw).strip() if lyrics_raw is not None else ""
         if not lyrics:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="lyrics is required for custom mode")
-        prompt = caption  # internal name used by Celery task + API adapter
+        prompt = caption
         sample_query = None
 
-    # Optional parameters with defaults
     thinking = payload.get("thinking", True)
     if not isinstance(thinking, bool):
         thinking = True
-    
+
     instrumental = bool(payload.get("instrumental", False))
 
     audio_duration = payload.get("audio_duration")
@@ -132,27 +126,19 @@ def create_generation(
 
     genre = payload.get("genre")
     if genre is not None:
-        # Handle multiple genres: can be a list, comma-separated string, or single string
         if isinstance(genre, list):
-            # If it's a list, join with comma
             genre = ", ".join(str(g).strip() for g in genre if str(g).strip())
             genre = genre if genre else None
         else:
-            # If it's a string, check if it contains commas (multiple genres)
             genre_str = str(genre).strip()
-            if genre_str:
-                # If it's already comma-separated, keep it; otherwise it's a single genre
-                genre = genre_str
-            else:
-                genre = None
+            genre = genre_str if genre_str else None
 
-    # Simple credits gate for MVP - each song costs 2 credits
     if user.credits_balance < 2:
         raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail="Insufficient credits. Each song costs 2 credits.")
     user.credits_balance -= 2
     db.add(user)
     db.commit()
-    db.refresh(user)  # Ensure user object is refreshed with updated credits
+    db.refresh(user)
 
     task_id = str(uuid4())
     init_task(
@@ -177,55 +163,26 @@ def create_generation(
         },
     )
 
-    # Check if FLUXSCHNELL=RUNPOD, if so, use BackgroundTasks instead of Celery
-    flux_schnell = os.getenv("FLUXSCHNELL", "").strip().upper()
-    print(f"[generate] FLUXSCHNELL env var: '{flux_schnell}'", flush=True)
-    if flux_schnell == "RUNPOD":
-        # Use BackgroundTasks instead of Celery task
-        print(f"[generate] Using BackgroundTasks (RUNPOD mode) for task_id={task_id}", flush=True)
-        background_tasks.add_task(
-            run_generation_task,
-            task_id=task_id,
-            user_id=str(user.id),
-            title=title,
-            mode=mode,
-            caption=caption,
-            prompt=prompt,
-            sample_query=sample_query,
-            lyrics=lyrics,
-            audio_duration=audio_duration_int,
-            thinking=thinking,
-            bpm=bpm_int,
-            vocal_language=vocal_language,
-            audio_format=audio_format,
-            inference_steps=inference_steps_int,
-            batch_size=batch_size_int,
-            genre=genre,
-            instrumental=instrumental,
-        )
-        print(f"[generate] Background task added successfully", flush=True)
-    else:
-        # Use Celery task as before
-        print(f"[generate] Using Celery task for task_id={task_id}", flush=True)
-        run_generation_task.delay(
-            task_id=task_id,
-            user_id=str(user.id),
-            title=title,
-            mode=mode,
-            caption=caption,
-            prompt=prompt,
-            sample_query=sample_query,
-            lyrics=lyrics,
-            audio_duration=audio_duration_int,
-            thinking=thinking,
-            bpm=bpm_int,
-            vocal_language=vocal_language,
-            audio_format=audio_format,
-            inference_steps=inference_steps_int,
-            batch_size=batch_size_int,
-            genre=genre,
-            instrumental=instrumental,
-        )
+    print(f"[generate] Using Celery task for task_id={task_id}", flush=True)
+    run_generation_task.delay(
+        task_id=task_id,
+        user_id=str(user.id),
+        title=title,
+        mode=mode,
+        caption=caption,
+        prompt=prompt,
+        sample_query=sample_query,
+        lyrics=lyrics,
+        audio_duration=audio_duration_int,
+        thinking=thinking,
+        bpm=bpm_int,
+        vocal_language=vocal_language,
+        audio_format=audio_format,
+        inference_steps=inference_steps_int,
+        batch_size=batch_size_int,
+        genre=genre,
+        instrumental=instrumental,
+    )
 
     return {"task_id": task_id, "events_url": f"/api/generate/events/{task_id}"}
 
@@ -238,15 +195,14 @@ async def generation_events(
 ) -> EventSourceResponse:
     async def event_gen() -> AsyncGenerator[dict, None]:
         last_payload: Optional[str] = None
-        max_wait_seconds = 300  # 5 minutes timeout
+        max_wait_seconds = 300
         start_time = time.time()
-        
+
         try:
             while True:
                 if await request.is_disconnected():
                     break
 
-                # Timeout check
                 elapsed = time.time() - start_time
                 if elapsed > max_wait_seconds:
                     yield {"event": "error", "data": json.dumps({"detail": "timeout waiting for task completion"})}
@@ -262,13 +218,11 @@ async def generation_events(
                     yield {"event": "error", "data": json.dumps({"detail": "task not found"})}
                     break
 
-                # Basic ownership check
                 if str(state.get("user_id")) != str(user.id):
                     yield {"event": "error", "data": json.dumps({"detail": "not found"})}
                     break
 
                 data = json.dumps(state, ensure_ascii=False)
-                # Always yield on first iteration, then only when state changes
                 if last_payload is None or data != last_payload:
                     yield {"event": "progress", "data": data}
                     last_payload = data
@@ -281,5 +235,3 @@ async def generation_events(
             yield {"event": "error", "data": json.dumps({"detail": f"unexpected error: {str(e)}"})}
 
     return EventSourceResponse(event_gen())
-
-
