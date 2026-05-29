@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
-from . import auth, discover, playlists, shares, songs, subscriptions, users, wechat
-from .routes import files, track_shares, generate, music
+from . import discover, playlists, shares, subscriptions, wechat
+from .routes import auth, files, generate, music, songs, track_shares, users
 
 api_router = APIRouter()
 
