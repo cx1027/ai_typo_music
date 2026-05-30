@@ -1,55 +1,48 @@
 from __future__ import annotations
 
-import bcrypt
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
-from jose import jwt
-
-from app.core.config import get_settings
-
-
-def hash_password(password: str) -> str:
-    """Hash a password using bcrypt. Passwords longer than 72 bytes are truncated."""
-    # Convert password to bytes
-    password_bytes = password.encode('utf-8')
-    # Bcrypt has a 72-byte limit, so truncate if necessary
-    if len(password_bytes) > 72:
-        password_bytes = password_bytes[:72]
-    # Generate salt and hash
-    salt = bcrypt.gensalt()
-    hashed = bcrypt.hashpw(password_bytes, salt)
-    return hashed.decode('utf-8')
-
-
-def verify_password(password: str, password_hash: str) -> bool:
-    """Verify a password against a bcrypt hash."""
-    password_bytes = password.encode('utf-8')
-    # Truncate if necessary for verification
-    if len(password_bytes) > 72:
-        password_bytes = password_bytes[:72]
-    hash_bytes = password_hash.encode('utf-8')
-    return bcrypt.checkpw(password_bytes, hash_bytes)
-
-
-def create_access_token(*, subject: str, extra: Optional[Dict[str, Any]] = None) -> str:
-    settings = get_settings()
-    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
-    payload: Dict[str, Any] = {"sub": subject, "type": "access", "exp": expire}
-    if extra:
-        payload.update(extra)
-    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_alg)
-
-
-def create_refresh_token(*, subject: str) -> str:
-    settings = get_settings()
-    expire = datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_expire_days)
-    payload: Dict[str, Any] = {"sub": subject, "type": "refresh", "exp": expire}
-    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_alg)
+from app.core.supabase import get_supabase
 
 
 def decode_token(token: str) -> Dict[str, Any]:
-    settings = get_settings()
-    return jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_alg])
+    """
+    Validates a Supabase access token by calling get_user().
+    Returns a payload dict compatible with the previous JWT format:
+      {"sub": user_id, "type": "access", "email": email}
+    Raises exception on invalid/expired token.
+    """
+    supabase = get_supabase()
+    user_response = supabase.auth.get_user(token)
+    if not user_response or not user_response.user:
+        raise Exception("Invalid or expired token")
+    user = user_response.user
+    return {
+        "sub": user.id,
+        "type": "access",
+        "email": user.email,
+    }
 
 
+def create_access_token(subject: str) -> str:
+    """
+    Deprecated — Supabase manages access tokens.
+    Returns empty string. Backend routes should use the tokens returned
+    by Supabase sign_in/sign_up calls directly.
+    """
+    return ""
+
+
+def create_refresh_token(subject: str) -> str:
+    """Deprecated — Supabase manages refresh tokens."""
+    return ""
+
+
+def hash_password(password: str) -> str:
+    """Deprecated — Supabase Auth handles password hashing server-side."""
+    return ""
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    """Deprecated — Supabase Auth handles password verification server-side."""
+    return False

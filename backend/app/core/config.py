@@ -13,8 +13,14 @@ class Settings(BaseSettings):
     app_name: str = "AI Music"
     env: str = "dev"
     api_prefix: str = "/api"
-    cors_origins: str = "http://localhost:5173"
+    cors_origins: str = "http://localhost:5173,http://localhost:3000"
 
+    # Supabase Auth
+    supabase_url: str = ""
+    supabase_anon_key: str = ""
+    supabase_service_role_key: str = ""
+
+    # Legacy JWT config (kept for backward compat during migration, can be removed later)
     jwt_secret: str = "change_me"
     jwt_alg: str = "HS256"
     access_token_expire_minutes: int = 60

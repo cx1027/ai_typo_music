@@ -5,16 +5,9 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session
 from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import get_db
-from app.core.security import (
-    create_access_token,
-    create_refresh_token,
-    decode_token,
-    hash_password,
-    verify_password,
-)
+from app.core.supabase import get_supabase, get_supabase_admin
 from app.models.user import RefreshRequest, TokenPair, User, UserCreate, UserLogin, UserPublic
 
 logger = logging.getLogger(__name__)
@@ -27,20 +20,16 @@ def register(payload: UserCreate, db: Session = Depends(get_db)) -> UserPublic:
         normalized_email = payload.email.lower().strip()
         normalized_username = payload.username.strip()
         logger.info(f"Registration attempt for email: {normalized_email}, username: {normalized_username}")
-        
-        # Check for duplicate email
+
+        # Check for duplicate email in local DB (shouldn't exist since Supabase owns auth,
+        # but kept as a safety belt)
         sql_query = text("SELECT id FROM users WHERE LOWER(TRIM(email)) = LOWER(TRIM(:email)) LIMIT 1")
         result = db.execute(sql_query, {"email": normalized_email})
         row = result.fetchone()
         if row:
-            # Get user by ID from the raw SQL result
-            user_id = row[0]
-            existing = db.get(User, user_id)
-            logger.warning(f"User already exists with email: {normalized_email}, user_id: {user_id}")
-            if existing:
-                logger.warning(f"Registration rejected: Email {normalized_email} already registered")
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
-        
+            logger.warning(f"User already exists with email: {normalized_email}")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
+
         # Check for duplicate username
         sql_query = text("SELECT id FROM users WHERE TRIM(username) = TRIM(:username) LIMIT 1")
         result = db.execute(sql_query, {"username": normalized_username})
@@ -48,38 +37,36 @@ def register(payload: UserCreate, db: Session = Depends(get_db)) -> UserPublic:
         if row:
             logger.warning(f"Registration rejected: Username {normalized_username} already taken")
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username already taken")
-        
+
+        # Sign up with Supabase Auth
+        supabase = get_supabase()
+        auth_response = supabase.auth.sign_up({
+            "email": normalized_email,
+            "password": payload.password,
+            "options": {
+                "data": {"username": normalized_username}
+            }
+        })
+
+        if auth_response.user is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Registration failed")
+
+        supabase_user = auth_response.user
+        session = auth_response.session
+
+        # Create local user record (links to Supabase user by ID)
         user = User(
-            email=normalized_email,
+            id=supabase_user.id,
+            email=supabase_user.email or normalized_email,
             username=normalized_username,
-            password_hash=hash_password(payload.password),
         )
         db.add(user)
-        try:
-            db.commit()
-            db.refresh(user)
-            logger.info(f"User registered successfully: {user.id}, email: {user.email}")
-            return UserPublic.model_validate(user, from_attributes=True)
-        except IntegrityError as e:
-            db.rollback()
-            logger.warning(f"Database integrity error during registration for {normalized_email}: {str(e)}")
-            # Check if it's a unique constraint violation on email
-            error_str = str(e).lower()
-            if "email" in error_str and "unique" in error_str:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Email already registered"
-                )
-            # Check if it's a unique constraint violation on username
-            if "username" in error_str and "unique" in error_str:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Username already taken"
-                )
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Registration failed due to database constraint violation"
-            )
+        db.commit()
+        db.refresh(user)
+
+        logger.info(f"User registered successfully: {user.id}, email: {user.email}")
+        return UserPublic.model_validate(user, from_attributes=True)
+
     except HTTPException:
         raise
     except Exception as e:
@@ -99,36 +86,30 @@ def login(payload: UserLogin, db: Session = Depends(get_db)) -> TokenPair:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Email and password are required"
             )
-        
+
         normalized_email = payload.email.lower().strip()
         logger.info(f"Login attempt for email: {normalized_email}")
-        
-        # Use raw SQL query directly
-        sql_query = text("SELECT id FROM users WHERE LOWER(TRIM(email)) = LOWER(TRIM(:email)) LIMIT 1")
-        result = db.execute(sql_query, {"email": normalized_email})
-        row = result.fetchone()
-        if row:
-            # Get user by ID from the raw SQL result
-            user_id = row[0]
-            user = db.get(User, user_id)
-            logger.info(f"User found: {user_id}")
-        else:
-            user = None
-            logger.warning(f"User not found for email: {normalized_email}")
-        
-        if not user:
-            logger.warning(f"Login failed: User not found for email {normalized_email}")
+
+        # Authenticate via Supabase
+        supabase = get_supabase()
+        auth_response = supabase.auth.sign_in_with_password({
+            "email": normalized_email,
+            "password": payload.password,
+        })
+
+        if auth_response.user is None or auth_response.session is None:
+            logger.warning(f"Login failed for email {normalized_email}: invalid credentials")
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
-        
-        if not verify_password(payload.password, user.password_hash):
-            logger.warning(f"Login failed: Invalid password for email {normalized_email}")
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
-        
-        logger.info(f"Login successful for user: {user.id}, email: {user.email}")
+
+        session = auth_response.session
+        logger.info(f"Login successful for Supabase user: {auth_response.user.id}")
+
         return TokenPair(
-            access_token=create_access_token(subject=str(user.id)),
-            refresh_token=create_refresh_token(subject=str(user.id)),
+            access_token=session.access_token,
+            refresh_token=session.refresh_token,
+            token_type="bearer",
         )
+
     except HTTPException:
         raise
     except Exception as e:
@@ -142,17 +123,20 @@ def login(payload: UserLogin, db: Session = Depends(get_db)) -> TokenPair:
 @router.post("/refresh", response_model=TokenPair)
 def refresh(payload: RefreshRequest) -> TokenPair:
     try:
-        decoded = decode_token(payload.refresh_token)
+        supabase = get_supabase()
+        auth_response = supabase.auth.refresh_session(payload.refresh_token)
+        session = auth_response.session
+
+        if not session:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
+
+        return TokenPair(
+            access_token=session.access_token,
+            refresh_token=session.refresh_token,
+            token_type="bearer",
+        )
+
+    except HTTPException:
+        raise
     except Exception:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
-    if decoded.get("type") != "refresh":
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token type")
-    sub = decoded.get("sub")
-    if not sub:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token subject")
-    return TokenPair(
-        access_token=create_access_token(subject=str(sub)),
-        refresh_token=create_refresh_token(subject=str(sub)),
-    )
-
-

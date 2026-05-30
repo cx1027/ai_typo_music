@@ -13,7 +13,9 @@ class User(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True, index=True)
     email: str = Field(index=True, unique=True)
     username: str = Field(index=True, unique=True)
-    password_hash: str
+    # password_hash: Removed — Supabase Auth handles credentials now.
+    # Kept as Optional[str] for backward compat with existing DB records.
+    password_hash: Optional[str] = None
 
     subscription_tier: str = Field(default="free", index=True)
     credits_balance: int = Field(default=1000)
