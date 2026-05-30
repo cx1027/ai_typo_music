@@ -40,91 +40,71 @@ export function RegisterForm({
   };
 
   return (
-    <div className="w-full flex flex-col gap-4">
-      {error && (
-        <div
-          className="p-3 rounded-xl text-sm"
-          style={{
-            background: "rgba(239,68,68,0.1)",
-            border: "1px solid rgba(239,68,68,0.3)",
-            color: "#f87171",
-          }}
-        >
-          {error}
-        </div>
-      )}
+    <div className="flex flex-col gap-4">
+      {error && <div className="error-box">{error}</div>}
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-        <div>
-          <label className="block text-sm mb-1.5" style={{ color: "var(--text-muted)" }}>
-            Username
-          </label>
+      <form onSubmit={handleSubmit} className="form">
+        <div className="field">
+          <label className="field-label">Username</label>
           <input
             type="text"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            className="input-base"
+            className="field-input"
             placeholder="yourname"
             required
             autoComplete="username"
           />
         </div>
-        <div>
-          <label className="block text-sm mb-1.5" style={{ color: "var(--text-muted)" }}>
-            Email
-          </label>
+        <div className="field">
+          <label className="field-label">Email</label>
           <input
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="input-base"
+            className="field-input"
             placeholder="you@example.com"
             required
             autoComplete="email"
           />
         </div>
-        <div>
-          <label className="block text-sm mb-1.5" style={{ color: "var(--text-muted)" }}>
-            Password
-          </label>
+        <div className="field">
+          <label className="field-label">Password</label>
           <input
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="input-base"
+            className="field-input"
             placeholder="At least 6 characters"
             required
             minLength={6}
             autoComplete="new-password"
           />
         </div>
-        <div>
-          <label className="block text-sm mb-1.5" style={{ color: "var(--text-muted)" }}>
-            Confirm Password
-          </label>
+        <div className="field">
+          <label className="field-label">Confirm Password</label>
           <input
             type="password"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
-            className="input-base"
+            className="field-input"
             placeholder="Repeat your password"
             required
             autoComplete="new-password"
           />
         </div>
-        <button type="submit" className="btn-primary w-full py-2.5 mt-1" disabled={loading}>
+        <button type="submit" className="btn-primary mt-2" disabled={loading}>
           {loading ? "Creating account..." : "Create Account"}
         </button>
       </form>
 
       {onSwitch && (
-        <p className="text-center text-sm" style={{ color: "var(--text-muted)" }}>
+        <p className="switch-link">
           Already have an account?{" "}
           <button
             type="button"
             onClick={onSwitch}
-            className="font-medium cursor-pointer bg-transparent border-none p-0"
-            style={{ color: "var(--accent)" }}
+            className="link-accent bg-transparent border-none cursor-pointer p-0 text-inherit"
           >
             Sign In
           </button>
